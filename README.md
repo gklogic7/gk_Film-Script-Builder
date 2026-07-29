@@ -8,6 +8,9 @@ https://claude.ai/public/artifacts/a33c84e1-d141-424d-a70f-d141acdc9dab
 **V2 Demo**  
 https://claude.ai/public/artifacts/749a494d-23cf-4a1c-a981-ef0e4bd05f8d
 
+**Vercel link v1** 
+https://gk-interactive-script-builder.vercel.app/
+
 ## ✨ Features
 
 - 🎥 Create movie scenes
