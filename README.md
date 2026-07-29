@@ -14,7 +14,7 @@ A simple interactive movie script planning tool for creating scenes, dialogues, 
 
 **V1 / V2**
 https://claude.ai/public/artifacts/a33c84e1-d141-424d-a70f-d141acdc9dab
-https://claude.ai/public/artifacts/a33c84e1-d141-424d-a70f-d141acdc9dab
+https://claude.ai/public/artifacts/749a494d-23cf-4a1c-a981-ef0e4bd05f8d
 
 ## 🛠 Built With
 
