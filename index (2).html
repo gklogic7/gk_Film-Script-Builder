@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GK Interactive Movie Script Builder</title>
+<style>
+  /* =========================================================
+     THEME / DESIGN TOKENS
+     A dark "blueprint" theme, similar to Unreal Engine / Godot
+     node editors: dark navy-grey canvas, glowing accent lines,
+     color-coded node headers per node type.
+  ========================================================= */
+  :root{
+    --bg-app:        #16171c;
+    --bg-panel:      #1d1f26;
+    --bg-panel-2:    #22242c;
+    --border:        #33364012;
+    --border-soft:   #33364a;
+    --text:          #e7e9ee;
+    --text-dim:      #9297a6;
+    --accent:        #5ec8f7;
+    --accent-glow:   rgba(94,200,247,0.55);
+    --scene:         #3d7fd6;
+    --scene-dark:    #1f3f6b;
+    --dialogue:      #34a874;
+    --dialogue-dark: #185c3d;
+    --choice:        #e08a2c;
+    --choice-dark:   #7a4712;
+    --danger:        #e0553f;
+    --ok:            #34a874;
+    --radius:        10px;
+    --font: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --mono: 'Consolas', 'Courier New', monospace;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{
+    height:100%; margin:0; padding:0;
+    background:var(--bg-app); color:var(--text);
+    font-family:var(--font); font-size:14px;
+    overflow:hidden;
+  }
+  button{
+    font-family:var(--font); cursor:pointer;
+    border:1px solid var(--border-soft);
+    background:var(--bg-panel-2); color:var(--text);
+    border-radius:6px; padding:7px 10px; font-size:13px;
+    transition:background .15s, border-color .15s, transform .05s;
+  }
+  button:hover{ background:#2a2d38; border-color:var(--accent); }
+  button:active{ transform:translateY(1px); }
+  button.primary{ background:linear-gradient(180deg,#3373c4,#255897); border-color:#3373c4; }
+  button.primary:hover{ background:#3d82d6; }
+  button.danger{ background:#5c2a22; border-color:var(--danger); }
+  button.danger:hover{ background:#7a372b; }
+  input, textarea, select{
+    font-family:var(--font); background:#14151a; color:var(--text);
+    border:1px solid var(--border-soft); border-radius:6px;
+    padding:6px 8px; font-size:13px; width:100%;
+  }
+  input:focus, textarea:focus, select:focus{ outline:none; border-color:var(--accent); }
+  textarea{ resize:vertical; min-height:60px; }
+  label{ display:block; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--text-dim); margin:10px 0 4px; }
+  ::-webkit-scrollbar{ width:10px; height:10px; }
+  ::-webkit-scrollbar-thumb{ background:#33364a; border-radius:6px; }
+  ::-webkit-scrollbar-track{ background:transparent; }
+
+  /* ================= APP LAYOUT ================= */
+  #app{
+    display:grid;
+    grid-template-rows:48px 1fr 190px;
+    grid-template-columns:250px 1fr 300px;
+    height:100vh; width:100vw;
+    grid-template-areas:
+      "topbar topbar topbar"
+      "left   canvas right"
+      "bottom bottom bottom";
+  }
+
+  /* ---- Top bar ---- */
+  #topbar{
+    grid-area:topbar;
+    display:flex; align-items:center; gap:8px;
+    background:var(--bg-panel); border-bottom:1px solid var(--border-soft);
+    padding:0 14px;
+  }
+  #topbar h1{
+    font-size:15px; margin:0 16px 0 0; color:var(--accent); letter-spacing:.03em;
+    white-space:nowrap;
+  }
+  #topbar .spacer{ flex:1; }
+  #toast{
+    position:fixed; top:56px; right:20px; z-index:999;
+    background:#1f8b53; color:#fff; padding:9px 16px; border-radius:8px;
+    font-size:13px; box-shadow:0 4px 14px rgba(0,0,0,.4);
+    opacity:0; pointer-events:none; transition:opacity .25s, transform .25s;
+    transform:translateY(-8px);
+  }
+  #toast.show{ opacity:1; transform:translateY(0); }
+
+  /* ---- Left panel: node library ---- */
+  #left{
+    grid-area:left; background:var(--bg-panel);
+    border-right:1px solid var(--border-soft);
+    padding:14px; overflow-y:auto;
+  }
+  #left h2, #right h2, #bottom h2{
+    font-size:11px; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--text-dim); margin:0 0 10px;
+    border-bottom:1px solid var(--border-soft); padding-bottom:6px;
+  }
+  .lib-btn{ width:100%; margin-bottom:8px; text-align:left; display:flex; align-items:center; gap:8px; }
+  .lib-dot{ width:10px; height:10px; border-radius:50%; flex:none; }
+  .lib-dot.scene{ background:var(--scene); }
+  .lib-dot.dialogue{ background:var(--dialogue); }
+  .lib-dot.choice{ background:var(--choice); }
+  #searchBox{ margin-top:14px; }
+  #nodeListMini{ margin-top:10px; font-size:12px; color:var(--text-dim); max-height:240px; overflow-y:auto; }
+  #nodeListMini div{ padding:5px 6px; border-radius:5px; cursor:pointer; }
+  #nodeListMini div:hover{ background:#2a2d38; }
+  #nodeListMini div.match{ background:#3a3320; color:#f0d78c; }
+
+  /* ---- Canvas ---- */
+  #canvasViewport{
+    grid-area:canvas; position:relative; overflow:hidden;
+    background-color:#191b21;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px),
+      linear-gradient(rgba(255,255,255,0.09) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.09) 1px, transparent 1px);
+    background-size: 40px 40px, 40px 40px, 200px 200px, 200px 200px;
+    cursor:grab;
+  }
+  #canvasViewport.panning{ cursor:grabbing; }
+  #canvasContent{
+    position:absolute; top:0; left:0; width:0; height:0;
+    transform-origin:0 0;
+  }
+  svg#connLayer{ position:absolute; top:0; left:0; overflow:visible; pointer-events:none; }
+  .conn-path{ fill:none; stroke:var(--accent); stroke-width:2.4; opacity:.85; filter:drop-shadow(0 0 3px var(--accent-glow)); }
+  .conn-label{ fill:#d7dbe4; font-size:11px; font-family:var(--font); }
+  .conn-temp{ fill:none; stroke:#ffd479; stroke-width:2; stroke-dasharray:6 4; }
+
+  .node{
+    position:absolute; width:230px;
+    background:var(--bg-panel-2); border:1px solid var(--border-soft);
+    border-radius:var(--radius); box-shadow:0 4px 14px rgba(0,0,0,.35);
+    user-select:none;
+  }
+  .node.selected{ border-color:#fff; box-shadow:0 0 0 2px var(--accent), 0 4px 18px rgba(0,0,0,.5); }
+  .node.start{ outline:2px dashed gold; outline-offset:3px; }
+  .node.searchmatch{ box-shadow:0 0 0 2px #ffd479, 0 4px 18px rgba(0,0,0,.5); }
+  .node-header{
+    display:flex; align-items:center; gap:6px;
+    padding:7px 8px; border-radius:var(--radius) var(--radius) 0 0;
+    cursor:move; font-weight:600; font-size:12.5px; color:#fff;
+  }
+  .node-header.scene{ background:linear-gradient(90deg,var(--scene-dark),var(--scene)); }
+  .node-header.dialogue{ background:linear-gradient(90deg,var(--dialogue-dark),var(--dialogue)); }
+  .node-header.choice{ background:linear-gradient(90deg,var(--choice-dark),var(--choice)); }
+  .node-header .htitle{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .node-header button{
+    background:rgba(0,0,0,.25); border:none; color:#fff; padding:2px 6px;
+    font-size:11px; border-radius:4px; line-height:1.4;
+  }
+  .node-header button:hover{ background:rgba(0,0,0,.45); }
+  .node-body{ padding:8px 10px; font-size:12px; color:var(--text-dim); min-height:20px; }
+  .node-body b{ color:var(--text); }
+  .node-tag{ display:inline-block; font-size:10px; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--text-dim); padding:0 8px 6px; }
+  .port{
+    position:absolute; width:14px; height:14px; border-radius:50%;
+    background:#0e0f13; border:2px solid var(--accent); top:50%; transform:translateY(-50%);
+    cursor:crosshair; z-index:5;
+  }
+  .port.out{ right:-8px; }
+  .port:hover{ background:var(--accent); }
+
+  /* ---- Right panel: inspector ---- */
+  #right{
+    grid-area:right; background:var(--bg-panel);
+    border-left:1px solid var(--border-soft); padding:14px; overflow-y:auto;
+  }
+  #inspectorEmpty{ color:var(--text-dim); font-size:12.5px; line-height:1.5; }
+  .choice-row{ display:flex; gap:6px; align-items:center; margin-bottom:6px; }
+  .choice-row input{ flex:1; }
+  .choice-row button{ flex:none; padding:6px 8px; }
+  #inspector .row-actions{ display:flex; gap:8px; margin-top:14px; }
+  #inspector .row-actions button{ flex:1; }
+
+  /* ---- Bottom panel: export ---- */
+  #bottom{
+    grid-area:bottom; background:var(--bg-panel); border-top:1px solid var(--border-soft);
+    padding:10px 14px; display:flex; flex-direction:column;
+  }
+  #bottom .bottom-head{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+  #bottom .bottom-head h2{ border:none; margin:0; padding:0; flex:none; }
+  #exportOutput{
+    flex:1; overflow:auto; background:#101116; border:1px solid var(--border-soft);
+    border-radius:6px; margin:0; padding:8px 10px; font-family:var(--mono);
+    font-size:12px; color:#9fe3a8; white-space:pre-wrap; word-break:break-all;
+  }
+
+  /* ---- Preview modal ---- */
+  #previewModal{
+    position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:1000;
+    display:none; align-items:center; justify-content:center;
+  }
+  #previewModal.show{ display:flex; }
+  #playerScreen{
+    width:640px; height:420px; border-radius:14px; overflow:hidden; position:relative;
+    background:#0d1b2b; box-shadow:0 20px 60px rgba(0,0,0,.6);
+    display:flex; flex-direction:column; justify-content:flex-end;
+    border:1px solid #2a3a4d;
+  }
+  #playerBg{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-size:22px; color:rgba(255,255,255,.5); padding:20px; text-align:center;
+    background:linear-gradient(160deg,#122236,#0a1420);
+  }
+  #playerBox{
+    position:relative; z-index:2; margin:16px; background:rgba(10,12,18,.85);
+    border:1px solid var(--accent); border-radius:10px; padding:14px 16px;
+    backdrop-filter:blur(2px);
+  }
+  #playerCharacter{ color:var(--accent); font-weight:700; margin-bottom:6px; font-size:13px; text-transform:uppercase; letter-spacing:.04em; }
+  #playerText{ font-size:15px; line-height:1.5; margin-bottom:10px; }
+  #playerChoices{ display:flex; flex-direction:column; gap:8px; }
+  #playerChoices button{ text-align:left; padding:9px 12px; }
+  #playerControls{ display:flex; justify-content:space-between; margin-top:14px; }
+  #closePreview{ position:absolute; top:10px; right:10px; z-index:5; }
+
+  .hint{ font-size:11px; color:var(--text-dim); margin-top:4px; line-height:1.4; }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ============ TOP BAR ============ -->
+  <div id="topbar">
+    <h1>🎬 GK Interactive Movie Script Builder</h1>
+    <button id="btnNew">New Project</button>
+    <button id="btnSave">Save Project</button>
+    <button id="btnLoad">Load Project</button>
+    <div class="spacer"></div>
+    <button id="btnAutoArrange">Auto Arrange</button>
+    <button class="primary" id="btnStartStory">▶ Start Story</button>
+  </div>
+
+  <!-- ============ LEFT PANEL: NODE LIBRARY ============ -->
+  <div id="left">
+    <h2>Node Library</h2>
+    <button class="lib-btn" id="addScene"><span class="lib-dot scene"></span> Add Scene Node</button>
+    <button class="lib-btn" id="addDialogue"><span class="lib-dot dialogue"></span> Add Dialogue Node</button>
+    <button class="lib-btn" id="addChoice"><span class="lib-dot choice"></span> Add Choice Node</button>
+
+    <div id="searchBox">
+      <label>Search Nodes</label>
+      <input type="text" id="searchInput" placeholder="Search by name, text...">
+    </div>
+    <div id="nodeListMini"></div>
+
+    <div class="hint" style="margin-top:16px;">
+      Drag node headers to move them.<br>
+      Drag the small circle on a node's right edge onto another node to connect them.<br>
+      Scroll to zoom, drag empty canvas to pan.<br>
+      <b>Ctrl+S</b> save · <b>Delete</b> remove selected node.
+    </div>
+  </div>
+
+  <!-- ============ CENTER: INFINITE CANVAS ============ -->
+  <div id="canvasViewport">
+    <div id="canvasContent">
+      <svg id="connLayer"></svg>
+      <!-- node divs get injected here -->
+    </div>
+  </div>
+
+  <!-- ============ RIGHT PANEL: INSPECTOR ============ -->
+  <div id="right">
+    <h2>Node Inspector</h2>
+    <div id="inspectorEmpty">Select a node on the canvas to edit its properties here.</div>
+    <div id="inspector" style="display:none;"></div>
+  </div>
+
+  <!-- ============ BOTTOM PANEL: EXPORT ============ -->
+  <div id="bottom">
+    <div class="bottom-head">
+      <h2>Export Script</h2>
+      <button id="btnExport">Export Script</button>
+      <button id="btnCopy">Copy Code</button>
+      <button id="btnDownload">Download JSON</button>
+      <span id="copiedMsg" style="color:var(--ok); font-size:12px; display:none;">Copied!</span>
+    </div>
+    <pre id="exportOutput">// Click "Export Script" to generate the JSON for your story.</pre>
+  </div>
+
+</div>
+
+<!-- ============ TOAST ============ -->
+<div id="toast"></div>
+
+<!-- ============ PREVIEW / PLAYER MODAL ============ -->
+<div id="previewModal">
+  <div id="playerScreen">
+    <button id="closePreview">✕ Close</button>
+    <div id="playerBg"></div>
+    <div id="playerBox">
+      <div id="playerCharacter" style="display:none;"></div>
+      <div id="playerText">Add nodes and press Start Story to preview your movie.</div>
+      <div id="playerChoices"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =====================================================================
+   GK INTERACTIVE MOVIE SCRIPT BUILDER
+   A single-file, offline, node-based branching story editor.
+   Sections below:
+     1. STATE            - app data (nodes, camera, selection)
+     2. NODE CREATION     - functions that build node objects
+     3. RENDERING         - drawing nodes + connection lines
+     4. INTERACTION       - drag, zoom, pan, connect ports
+     5. INSPECTOR         - right panel editing form
+     6. STORY PLAYBACK    - the "Preview Mode" player
+     7. EXPORT / COPY     - JSON generation + clipboard
+     8. SAVE / LOAD        - localStorage project persistence
+     9. INIT / SHORTCUTS
+   ===================================================================== */
+
+/* ---------------------------------------------------------------
+   1. STATE
+   All data describing the current project lives in this object.
+   Nothing here talks to the DOM directly - render() reads it.
+--------------------------------------------------------------- */
+const state = {
+  storyName: "Untitled Story",
+  nodes: [],          // array of node objects (see section 2)
+  startNodeId: null,  // which node the player begins on
+  selectedId: null,   // currently selected node (for inspector)
+  camera: { x: 60, y: 60, zoom: 1 }, // canvas pan/zoom
+  idCounter: 1
+};
+
+let dragState = null;     // holds info while dragging a node or panning
+let connectState = null;  // holds info while dragging a new connection
+
+/* ---------------------------------------------------------------
+   2. NODE CREATION
+   Each node type matches the JSON shape requested in the spec.
+   `title` is used everywhere as the human-readable "Node Name"
+   shown in the inspector and the node header.
+--------------------------------------------------------------- */
+function nextId(){
+  return "node_" + (state.idCounter++);
+}
+
+function createSceneNode(x, y){
+  return {
+    id: nextId(),
+    type: "scene",
+    title: "New Scene",
+    description: "The story begins...",
+    background: "Forest at night",
+    next: "",
+    x, y
+  };
+}
+
+function createDialogueNode(x, y){
+  return {
+    id: nextId(),
+    type: "dialogue",
+    title: "New Dialogue",
+    character: "Narrator",
+    text: "Hello there.",
+    next: "",
+    x, y
+  };
+}
+
+function createChoiceNode(x, y){
+  return {
+    id: nextId(),
+    type: "choice",
+    title: "New Choice",
+    question: "What do you do?",
+    choices: [
+      { text: "Option A", next: "" },
+      { text: "Option B", next: "" }
+    ],
+    x, y
+  };
+}
+
+function addNode(type){
+  // Spawn new nodes roughly in the middle of the current view
+  const vp = document.getElementById("canvasViewport");
+  const cx = (vp.clientWidth / 2 - state.camera.x) / state.camera.zoom - 110;
+  const cy = (vp.clientHeight / 2 - state.camera.y) / state.camera.zoom - 40;
+  let node;
+  if (type === "scene") node = createSceneNode(cx, cy);
+  if (type === "dialogue") node = createDialogueNode(cx, cy);
+  if (type === "choice") node = createChoiceNode(cx, cy);
+  state.nodes.push(node);
+  if (!state.startNodeId) state.startNodeId = node.id; // first node becomes the start automatically
+  state.selectedId = node.id;
+  render();
+}
+
+function findNode(id){
+  return state.nodes.find(n => n.id === id);
+}
+
+/* ---------------------------------------------------------------
+   3. RENDERING
+   render() is called after every change to state. It rebuilds the
+   node elements and re-draws the SVG connection lines.
+--------------------------------------------------------------- */
+function render(){
+  renderCamera();
+  renderNodes();
+  renderConnections();
+  renderInspector();
+  renderNodeList();
+}
+
+function renderCamera(){
+  const content = document.getElementById("canvasContent");
+  content.style.transform = `translate(${state.camera.x}px, ${state.camera.y}px) scale(${state.camera.zoom})`;
+}
+
+function renderNodes(){
+  const content = document.getElementById("canvasContent");
+  // remove old node elements (keep the svg layer)
+  content.querySelectorAll(".node").forEach(el => el.remove());
+
+  state.nodes.forEach(node => {
+    const el = document.createElement("div");
+    el.className = "node" + (node.id === state.selectedId ? " selected" : "")
+                  + (node.id === state.startNodeId ? " start" : "");
+    el.style.left = node.x + "px";
+    el.style.top = node.y + "px";
+    el.dataset.id = node.id;
+
+    const header = document.createElement("div");
+    header.className = "node-header " + node.type;
+    header.innerHTML = `
+      <span class="htitle">${escapeHtml(node.title || node.id)}</span>
+      <button data-action="start" title="Set as story start">★</button>
+      <button data-action="dup" title="Duplicate node">⧉</button>
+      <button data-action="del" title="Delete node">✕</button>
+    `;
+    header.addEventListener("mousedown", (e) => startNodeDrag(e, node));
+
+    const body = document.createElement("div");
+    body.className = "node-body";
+    body.innerHTML = nodePreviewHtml(node);
+
+    const tag = document.createElement("div");
+    tag.className = "node-tag";
+    tag.textContent = node.type + " · " + node.id;
+
+    el.appendChild(header);
+    el.appendChild(body);
+    el.appendChild(tag);
+
+    // output "port" - drag from here to connect this node to another
+    const port = document.createElement("div");
+    port.className = "port out";
+    port.addEventListener("mousedown", (e) => startConnectionDrag(e, node));
+    el.appendChild(port);
+
+    el.addEventListener("mousedown", () => selectNode(node.id));
+
+    content.appendChild(el);
+  });
+}
+
+function nodePreviewHtml(node){
+  if (node.type === "scene"){
+    return `<b>${escapeHtml(node.background || "(no background)")}</b><br>${escapeHtml(truncate(node.description, 80))}`;
+  }
+  if (node.type === "dialogue"){
+    return `<b>${escapeHtml(node.character || "Character")}:</b> ${escapeHtml(truncate(node.text, 80))}`;
+  }
+  if (node.type === "choice"){
+    const items = node.choices.map((c,i) => `${i+1}. ${escapeHtml(c.text || "(empty)")}`).join("<br>");
+    return `<b>${escapeHtml(truncate(node.question, 60))}</b><br>${items}`;
+  }
+  return "";
+}
+
+function truncate(str, n){
+  str = str || "";
+  return str.length > n ? str.slice(0, n) + "…" : str;
+}
+function escapeHtml(str){
+  return String(str ?? "").replace(/[&<>"']/g, s => ({
+    "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
+  }[s]));
+}
+
+/* ----- CONNECTION SYSTEM -----
+   A connection is not stored separately - it is implied by a node's
+   `next` field (scene/dialogue) or by each `choice.next` (choice
+   nodes). renderConnections() reads those fields and draws an SVG
+   curve from the source node's output port to the target node.
+------------------------------------------------------------------ */
+function renderConnections(){
+  const svg = document.getElementById("connLayer");
+  svg.innerHTML = "";
+
+  // size the svg/content area to fit all nodes so lines never clip
+  let maxX = 800, maxY = 600;
+  state.nodes.forEach(n => { maxX = Math.max(maxX, n.x + 400); maxY = Math.max(maxY, n.y + 400); });
+  const content = document.getElementById("canvasContent");
+  content.style.width = maxX + "px";
+  content.style.height = maxY + "px";
+  svg.setAttribute("width", maxX);
+  svg.setAttribute("height", maxY);
+
+  state.nodes.forEach(node => {
+    const NODE_W = 230, PORT_Y = 26; // approx position of header center where the port sits
+    const from = { x: node.x + NODE_W, y: node.y + PORT_Y };
+
+    if (node.type === "choice"){
+      node.choices.forEach(choice => {
+        if (choice.next) drawConnection(svg, from, targetPoint(choice.next), choice.text);
+      });
+    } else {
+      if (node.next) drawConnection(svg, from, targetPoint(node.next), "");
+    }
+  });
+
+  // temporary line while user is dragging a new connection
+  if (connectState){
+    const p1 = connectState.from;
+    const p2 = connectState.current;
+    const path = document.createElementNS("http://www.w3.org/2000/svg","path");
+    path.setAttribute("class","conn-path conn-temp");
+    path.setAttribute("d", bezier(p1, p2));
+    svg.appendChild(path);
+  }
+}
+
+function targetPoint(targetId){
+  const t = findNode(targetId);
+  if (!t) return null;
+  return { x: t.x, y: t.y + 26 };
+}
+
+function drawConnection(svg, from, to, label){
+  if (!to) return; // target id doesn't exist (yet) - skip drawing
+  const path = document.createElementNS("http://www.w3.org/2000/svg","path");
+  path.setAttribute("class","conn-path");
+  path.setAttribute("d", bezier(from, to));
+  svg.appendChild(path);
+
+  if (label){
+    const mid = { x:(from.x+to.x)/2, y:(from.y+to.y)/2 };
+    const text = document.createElementNS("http://www.w3.org/2000/svg","text");
+    text.setAttribute("class","conn-label");
+    text.setAttribute("x", mid.x);
+    text.setAttribute("y", mid.y - 6);
+    text.textContent = label;
+    svg.appendChild(text);
+  }
+}
+
+function bezier(p1, p2){
+  const dx = Math.max(60, Math.abs(p2.x - p1.x) / 2);
+  return `M ${p1.x} ${p1.y} C ${p1.x+dx} ${p1.y}, ${p2.x-dx} ${p2.y}, ${p2.x} ${p2.y}`;
+}
+
+/* ---------------------------------------------------------------
+   4. INTERACTION: dragging nodes, panning, zooming, connecting
+--------------------------------------------------------------- */
+function selectNode(id){
+  state.selectedId = id;
+  render();
+}
+
+function startNodeDrag(e, node){
+  e.stopPropagation();
+  if (e.target.tagName === "BUTTON"){
+    handleHeaderButton(e.target.dataset.action, node);
+    return;
+  }
+  selectNode(node.id);
+  dragState = { type:"node", node, startX:e.clientX, startY:e.clientY, origX:node.x, origY:node.y };
+}
+
+function handleHeaderButton(action, node){
+  if (action === "del") deleteNode(node.id);
+  if (action === "dup") duplicateNode(node.id);
+  if (action === "start"){ state.startNodeId = node.id; render(); }
+}
+
+function deleteNode(id){
+  state.nodes = state.nodes.filter(n => n.id !== id);
+  if (state.selectedId === id) state.selectedId = null;
+  if (state.startNodeId === id) state.startNodeId = state.nodes[0] ? state.nodes[0].id : null;
+  render();
+}
+
+function duplicateNode(id){
+  const orig = findNode(id);
+  if (!orig) return;
+  const copy = JSON.parse(JSON.stringify(orig));
+  copy.id = nextId();
+  copy.x += 40; copy.y += 40;
+  copy.title = copy.title + " (copy)";
+  state.nodes.push(copy);
+  state.selectedId = copy.id;
+  render();
+}
+
+// Panning the canvas (mousedown on empty background)
+document.getElementById("canvasViewport").addEventListener("mousedown", (e) => {
+  if (e.target.id === "canvasViewport" || e.target.id === "canvasContent" || e.target.tagName === "svg"){
+    dragState = { type:"pan", startX:e.clientX, startY:e.clientY, origX:state.camera.x, origY:state.camera.y };
+    document.getElementById("canvasViewport").classList.add("panning");
+    state.selectedId = null;
+    render();
+  }
+});
+
+document.addEventListener("mousemove", (e) => {
+  if (connectState){
+    const rect = document.getElementById("canvasViewport").getBoundingClientRect();
+    connectState.current = screenToContent(e.clientX - rect.left, e.clientY - rect.top);
+    renderConnections();
+    return;
+  }
+  if (!dragState) return;
+  const dx = (e.clientX - dragState.startX) / state.camera.zoom;
+  const dy = (e.clientY - dragState.startY) / state.camera.zoom;
+
+  if (dragState.type === "node"){
+    dragState.node.x = dragState.origX + dx;
+    dragState.node.y = dragState.origY + dy;
+    render();
+  } else if (dragState.type === "pan"){
+    state.camera.x = dragState.origX + (e.clientX - dragState.startX);
+    state.camera.y = dragState.origY + (e.clientY - dragState.startY);
+    renderCamera();
+    renderConnections();
+  }
+});
+
+document.addEventListener("mouseup", (e) => {
+  if (connectState){
+    finishConnectionDrag(e);
+  }
+  dragState = null;
+  document.getElementById("canvasViewport").classList.remove("panning");
+});
+
+function screenToContent(px, py){
+  return { x: (px - state.camera.x) / state.camera.zoom, y: (py - state.camera.y) / state.camera.zoom };
+}
+
+// Zoom with the mouse wheel, keeping things centered on the cursor
+document.getElementById("canvasViewport").addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const rect = e.currentTarget.getBoundingClientRect();
+  const mouseX = e.clientX - rect.left, mouseY = e.clientY - rect.top;
+  const before = screenToContent(mouseX, mouseY);
+
+  const factor = e.deltaY < 0 ? 1.1 : 0.9;
+  state.camera.zoom = Math.min(2.2, Math.max(0.3, state.camera.zoom * factor));
+
+  const after = { x: before.x * state.camera.zoom + state.camera.x, y: before.y * state.camera.zoom + state.camera.y };
+  state.camera.x += mouseX - after.x;
+  state.camera.y += mouseY - after.y;
+
+  renderCamera();
+  renderConnections();
+}, { passive:false });
+
+// Dragging FROM a node's output port TO another node creates a connection
+function startConnectionDrag(e, node){
+  e.stopPropagation(); e.preventDefault();
+  const NODE_W = 230, PORT_Y = 26;
+  connectState = { fromNode: node, from: { x: node.x + NODE_W, y: node.y + PORT_Y }, current: { x: node.x + NODE_W, y: node.y + PORT_Y } };
+}
+
+function finishConnectionDrag(e){
+  const rect = document.getElementById("canvasViewport").getBoundingClientRect();
+  const point = screenToContent(e.clientX - rect.left, e.clientY - rect.top);
+  // find which node the mouse was released over
+  const target = state.nodes.find(n => point.x >= n.x && point.x <= n.x + 230 && point.y >= n.y && point.y <= n.y + 160);
+
+  if (target && target.id !== connectState.fromNode.id){
+    const src = connectState.fromNode;
+    if (src.type === "choice"){
+      // fill the first empty choice slot, or add a new choice
+      const empty = src.choices.find(c => !c.next);
+      if (empty) empty.next = target.id;
+      else src.choices.push({ text: "New Option", next: target.id });
+    } else {
+      src.next = target.id;
+    }
+  }
+  connectState = null;
+  render();
+}
+
+/* ---------------------------------------------------------------
+   5. INSPECTOR (right panel)
+   Builds an editing form based on the selected node's type, and
+   wires up inputs so edits instantly update state + canvas.
+--------------------------------------------------------------- */
+function renderInspector(){
+  const node = findNode(state.selectedId);
+  const empty = document.getElementById("inspectorEmpty");
+  const box = document.getElementById("inspector");
+
+  if (!node){
+    empty.style.display = "block";
+    box.style.display = "none";
+    box.innerHTML = "";
+    return;
+  }
+  empty.style.display = "none";
+  box.style.display = "block";
+
+  let html = `
+    <label>Node ID</label>
+    <input type="text" value="${escapeHtml(node.id)}" disabled>
+    <label>Node Name</label>
+    <input type="text" id="f_title" value="${escapeHtml(node.title)}">
+  `;
+
+  if (node.type === "scene"){
+    html += `
+      <label>Scene Description</label>
+      <textarea id="f_description">${escapeHtml(node.description)}</textarea>
+      <label>Background</label>
+      <input type="text" id="f_background" value="${escapeHtml(node.background)}">
+      <label>Next Node ID</label>
+      <input type="text" id="f_next" value="${escapeHtml(node.next)}" placeholder="e.g. node_2">
+    `;
+  }
+
+  if (node.type === "dialogue"){
+    html += `
+      <label>Character Name</label>
+      <input type="text" id="f_character" value="${escapeHtml(node.character)}">
+      <label>Dialogue Text</label>
+      <textarea id="f_text">${escapeHtml(node.text)}</textarea>
+      <label>Next Node ID</label>
+      <input type="text" id="f_next" value="${escapeHtml(node.next)}" placeholder="e.g. node_2">
+    `;
+  }
+
+  if (node.type === "choice"){
+    html += `
+      <label>Question</label>
+      <textarea id="f_question">${escapeHtml(node.question)}</textarea>
+      <label>Choice Options</label>
+      <div id="choiceRows"></div>
+      <button id="addChoiceRow" style="width:100%;margin-top:4px;">+ Add Choice</button>
+    `;
+  }
+
+  html += `
+    <div class="row-actions">
+      <button id="f_dup">⧉ Duplicate</button>
+      <button id="f_del" class="danger">✕ Delete</button>
+    </div>
+  `;
+
+  box.innerHTML = html;
+
+  // generic fields
+  const bind = (id, key, isNum) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("input", () => { node[key] = el.value; render(); document.getElementById(id)?.focus(); });
+  };
+  bind("f_title","title");
+  bind("f_description","description");
+  bind("f_background","background");
+  bind("f_next","next");
+  bind("f_character","character");
+  bind("f_text","text");
+  bind("f_question","question");
+
+  document.getElementById("f_dup").addEventListener("click", () => duplicateNode(node.id));
+  document.getElementById("f_del").addEventListener("click", () => deleteNode(node.id));
+
+  if (node.type === "choice"){
+    renderChoiceRows(node);
+    document.getElementById("addChoiceRow").addEventListener("click", () => {
+      node.choices.push({ text:"New Option", next:"" });
+      render();
+    });
+  }
+
+  // refocus preserved input after re-render so typing feels smooth
+  // (kept simple/beginner-friendly: full re-render on every keystroke)
+}
+
+function renderChoiceRows(node){
+  const wrap = document.getElementById("choiceRows");
+  wrap.innerHTML = "";
+  node.choices.forEach((choice, i) => {
+    const row = document.createElement("div");
+    row.className = "choice-row";
+    row.innerHTML = `
+      <input type="text" placeholder="Choice text" value="${escapeHtml(choice.text)}" data-idx="${i}" data-field="text">
+      <input type="text" placeholder="Next ID" value="${escapeHtml(choice.next)}" data-idx="${i}" data-field="next" style="max-width:90px;">
+      <button data-idx="${i}">✕</button>
+    `;
+    wrap.appendChild(row);
+  });
+  wrap.querySelectorAll("input").forEach(inp => {
+    inp.addEventListener("input", () => {
+      node.choices[inp.dataset.idx][inp.dataset.field] = inp.value;
+      render();
+    });
+  });
+  wrap.querySelectorAll("button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      node.choices.splice(btn.dataset.idx, 1);
+      render();
+    });
+  });
+}
+
+/* ---------------------------------------------------------------
+   6. STORY PLAYBACK ("Preview Mode")
+   Walks the node graph starting at state.startNodeId, rendering
+   each node type as an interactive movie screen.
+--------------------------------------------------------------- */
+let playerCurrentId = null;
+
+function openPreview(){
+  if (state.nodes.length === 0){
+    alert("Add at least one node before starting the story!");
+    return;
+  }
+  playerCurrentId = state.startNodeId || state.nodes[0].id;
+  document.getElementById("previewModal").classList.add("show");
+  playNode(playerCurrentId);
+}
+
+function closePreview(){
+  document.getElementById("previewModal").classList.remove("show");
+}
+
+function playNode(id){
+  const node = findNode(id);
+  const bg = document.getElementById("playerBg");
+  const charEl = document.getElementById("playerCharacter");
+  const textEl = document.getElementById("playerText");
+  const choicesEl = document.getElementById("playerChoices");
+  choicesEl.innerHTML = "";
+  charEl.style.display = "none";
+
+  if (!node){
+    bg.textContent = "🎬";
+    textEl.innerHTML = "<b>THE END</b>";
+    const restart = document.createElement("button");
+    restart.textContent = "↺ Restart Story";
+    restart.className = "primary";
+    restart.addEventListener("click", () => playNode(state.startNodeId || state.nodes[0].id));
+    choicesEl.appendChild(restart);
+    return;
+  }
+
+  if (node.type === "scene"){
+    bg.textContent = node.background || "";
+    textEl.textContent = node.description;
+    const cont = document.createElement("button");
+    cont.textContent = "Continue ▶";
+    cont.className = "primary";
+    cont.addEventListener("click", () => playNode(node.next));
+    choicesEl.appendChild(cont);
+  }
+
+  if (node.type === "dialogue"){
+    bg.textContent = "";
+    charEl.style.display = "block";
+    charEl.textContent = node.character;
+    textEl.textContent = node.text;
+    const cont = document.createElement("button");
+    cont.textContent = "Continue ▶";
+    cont.className = "primary";
+    cont.addEventListener("click", () => playNode(node.next));
+    choicesEl.appendChild(cont);
+  }
+
+  if (node.type === "choice"){
+    bg.textContent = "";
+    textEl.textContent = node.question;
+    node.choices.forEach(choice => {
+      const b = document.createElement("button");
+      b.textContent = choice.text;
+      b.addEventListener("click", () => playNode(choice.next));
+      choicesEl.appendChild(b);
+    });
+  }
+}
+
+/* ---------------------------------------------------------------
+   7. EXPORT / COPY
+   Builds the plain-JSON representation of the story and lets the
+   user copy it to the clipboard or download it as a .json file.
+--------------------------------------------------------------- */
+function buildExportObject(){
+  return {
+    storyName: state.storyName,
+    nodes: state.nodes.map(n => {
+      // strip out editor-only fields (x / y canvas position)
+      const { x, y, ...rest } = n;
+      return rest;
+    })
+  };
+}
+
+function exportScript(){
+  const json = JSON.stringify(buildExportObject(), null, 2);
+  document.getElementById("exportOutput").textContent = json;
+}
+
+function copyExport(){
+  const text = document.getElementById("exportOutput").textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const msg = document.getElementById("copiedMsg");
+    msg.style.display = "inline";
+    setTimeout(() => msg.style.display = "none", 1500);
+  }).catch(() => {
+    // clipboard API may fail on very old browsers - fallback
+    const ta = document.createElement("textarea");
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand("copy"); document.body.removeChild(ta);
+    showToast("Copied!");
+  });
+}
+
+function downloadExport(){
+  const json = JSON.stringify(buildExportObject(), null, 2);
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = (state.storyName || "story").replace(/\s+/g,"_") + ".json";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ---------------------------------------------------------------
+   8. SAVE / LOAD / NEW (localStorage)
+--------------------------------------------------------------- */
+const STORAGE_KEY = "gk_movie_script_project";
+
+function saveProject(){
+  const data = {
+    storyName: state.storyName,
+    nodes: state.nodes,
+    startNodeId: state.startNodeId,
+    idCounter: state.idCounter
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  showToast("Project saved!");
+}
+
+function loadProject(){
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw){ showToast("No saved project found."); return; }
+  const data = JSON.parse(raw);
+  state.storyName = data.storyName || "Untitled Story";
+  state.nodes = data.nodes || [];
+  state.startNodeId = data.startNodeId || (state.nodes[0] && state.nodes[0].id);
+  state.idCounter = data.idCounter || (state.nodes.length + 1);
+  state.selectedId = null;
+  render();
+  showToast("Project loaded!");
+}
+
+function newProject(){
+  if (!confirm("Start a new project? Unsaved changes will be lost.")) return;
+  state.storyName = "Untitled Story";
+  state.nodes = [];
+  state.startNodeId = null;
+  state.selectedId = null;
+  state.idCounter = 1;
+  render();
+  showToast("New project started.");
+}
+
+function showToast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 1800);
+}
+
+/* ---------------------------------------------------------------
+   EXTRA: Search + Auto Arrange
+--------------------------------------------------------------- */
+function renderNodeList(){
+  const list = document.getElementById("nodeListMini");
+  const query = (document.getElementById("searchInput").value || "").toLowerCase();
+  list.innerHTML = "";
+
+  document.querySelectorAll(".node").forEach(el => el.classList.remove("searchmatch"));
+
+  state.nodes.forEach(node => {
+    const haystack = JSON.stringify(node).toLowerCase();
+    const isMatch = query.length > 0 && haystack.includes(query);
+    const row = document.createElement("div");
+    row.textContent = `[${node.type}] ${node.title}`;
+    if (isMatch) row.classList.add("match");
+    row.addEventListener("click", () => { selectNode(node.id); });
+    list.appendChild(row);
+
+    if (isMatch){
+      const el = document.querySelector(`.node[data-id="${node.id}"]`);
+      if (el) el.classList.add("searchmatch");
+    }
+  });
+}
+
+function autoArrange(){
+  // Simple breadth-first layout: start node at column 0, its
+  // connections in column 1, and so on. Anything unreachable is
+  // stacked below the graph.
+  const COL_W = 300, ROW_H = 190;
+  const visited = new Set();
+  const columns = [];
+
+  function outgoing(node){
+    if (node.type === "choice") return node.choices.map(c => c.next).filter(Boolean);
+    return node.next ? [node.next] : [];
+  }
+
+  let frontier = [state.startNodeId || (state.nodes[0] && state.nodes[0].id)].filter(Boolean);
+  let col = 0;
+  while (frontier.length){
+    columns[col] = columns[col] || [];
+    const next = [];
+    frontier.forEach(id => {
+      if (visited.has(id)) return;
+      visited.add(id);
+      columns[col].push(id);
+      const node = findNode(id);
+      if (node) outgoing(node).forEach(nid => { if (!visited.has(nid)) next.push(nid); });
+    });
+    frontier = next;
+    col++;
+  }
+
+  // place remaining (unreachable) nodes in an extra column
+  const leftover = state.nodes.map(n => n.id).filter(id => !visited.has(id));
+  if (leftover.length) columns.push(leftover);
+
+  columns.forEach((ids, c) => {
+    ids.forEach((id, r) => {
+      const node = findNode(id);
+      if (!node) return;
+      node.x = 60 + c * COL_W;
+      node.y = 60 + r * ROW_H;
+    });
+  });
+
+  render();
+  showToast("Nodes auto-arranged.");
+}
+
+/* ---------------------------------------------------------------
+   9. INIT / EVENT WIRING / KEYBOARD SHORTCUTS
+--------------------------------------------------------------- */
+document.getElementById("addScene").addEventListener("click", () => addNode("scene"));
+document.getElementById("addDialogue").addEventListener("click", () => addNode("dialogue"));
+document.getElementById("addChoice").addEventListener("click", () => addNode("choice"));
+document.getElementById("searchInput").addEventListener("input", renderNodeList);
+
+document.getElementById("btnNew").addEventListener("click", newProject);
+document.getElementById("btnSave").addEventListener("click", saveProject);
+document.getElementById("btnLoad").addEventListener("click", loadProject);
+document.getElementById("btnAutoArrange").addEventListener("click", autoArrange);
+document.getElementById("btnStartStory").addEventListener("click", openPreview);
+document.getElementById("closePreview").addEventListener("click", closePreview);
+
+document.getElementById("btnExport").addEventListener("click", exportScript);
+document.getElementById("btnCopy").addEventListener("click", copyExport);
+document.getElementById("btnDownload").addEventListener("click", downloadExport);
+
+document.addEventListener("keydown", (e) => {
+  const inField = ["INPUT","TEXTAREA"].includes(document.activeElement.tagName);
+
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s"){
+    e.preventDefault();
+    saveProject();
+  }
+  if ((e.key === "Delete" || e.key === "Backspace") && state.selectedId && !inField){
+    e.preventDefault();
+    deleteNode(state.selectedId);
+  }
+});
+
+/* Seed the canvas with a tiny example story so the app isn't empty
+   on first load - demonstrates a Scene -> Choice -> two endings. */
+function seedExample(){
+  const scene = createSceneNode(60, 80);
+  scene.title = "Forest Entrance";
+  scene.description = "You enter a dark forest.";
+  scene.background = "Dark Forest";
+
+  const choice = createChoiceNode(380, 80);
+  choice.title = "Fork in the Path";
+  choice.question = "Enter the cave, or return home?";
+  choice.choices = [
+    { text: "Enter cave", next: "" },
+    { text: "Return home", next: "" }
+  ];
+  scene.next = choice.id;
+
+  const caveDialogue = createDialogueNode(700, 0);
+  caveDialogue.title = "Inside the Cave";
+  caveDialogue.character = "Narrator";
+  caveDialogue.text = "It's pitch black. Something moves in the shadows...";
+  choice.choices[0].next = caveDialogue.id;
+
+  const homeDialogue = createDialogueNode(700, 200);
+  homeDialogue.title = "Back Home";
+  homeDialogue.character = "Narrator";
+  homeDialogue.text = "You decide safety is better than mystery, and head home.";
+  choice.choices[1].next = homeDialogue.id;
+
+  state.nodes.push(scene, choice, caveDialogue, homeDialogue);
+  state.startNodeId = scene.id;
+}
+
+seedExample();
+render();
+exportScript();
+</script>
+</body>
+</html>
